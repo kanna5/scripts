@@ -13,7 +13,7 @@ findimg() {
     local i
     for i in "${imgs[@]}"; do
         case "$i" in
-            */"$i":*|"$i":*|"$i")
+            */"$1":*|"$1":*|"$1")
                 echo "$i"
                 return
                 ;;
