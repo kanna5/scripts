@@ -1,0 +1,45 @@
+#!/bin/bash
+set -e -o pipefail
+
+die() {
+    [ "$#" -gt 0 ] && echo -e "\033[31m$*\033[0m" >&2
+    exit 1
+}
+
+findimg() {
+    local -a imgs
+    readarray -t imgs < <(sudo docker images --format='{{ printf "%s:%s" .Repository .Tag }}')
+
+    local i
+    for i in "${imgs[@]}"; do
+        case "$i" in
+            */"$i":*|"$i":*|"$i")
+                echo "$i"
+                return
+                ;;
+        esac
+    done
+}
+
+IMG=archlinux:base-devel
+BLACKLIST_DIRS=":/:/boot:/proc:/root:/run:/etc:/usr:/dev:/var:/home:/opt:/srv:/tmp:/mnt:/sys:$(realpath "$HOME"):"
+
+cwd="$(realpath .)"
+echo ":$BLACKLIST_DIRS:" | grep -q "$cwd" && die "Refuse to run under protected directory: $cwd"
+
+[ -n "$1" ] && IMG=$(findimg "$1")
+[ -z "$IMG" ] && die "image not found: $1"
+shift
+
+CMD=("$@")
+if [ ${#CMD[@]} -le 0 ]; then
+    CMD=( /bin/bash )
+    case "$IMG" in
+        *alpine*)
+            CMD=( /bin/sh )
+            ;;
+    esac
+fi
+
+set -x
+exec sudo docker run -it --rm -e "TERM=$TERM" -v "$cwd:/cwd" --workdir /cwd "$IMG" "${CMD[@]}"
