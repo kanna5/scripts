@@ -29,7 +29,7 @@ echo ":$BLACKLIST_DIRS:" | grep -q "$cwd" && die "Refuse to run under protected 
 
 [ -n "$1" ] && IMG=$(findimg "$1")
 [ -z "$IMG" ] && die "image not found: $1"
-shift
+shift || true
 
 CMD=("$@")
 if [ ${#CMD[@]} -le 0 ]; then
