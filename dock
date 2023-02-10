@@ -10,14 +10,20 @@ findimg() {
     local -a imgs
     readarray -t imgs < <(sudo docker images --format='{{ printf "%s:%s" .Repository .Tag }}')
 
+    declare -a match_prio
     local i
+    # Exact matches
     for i in "${imgs[@]}"; do
         case "$i" in
-            */"$1":*|"$1":*|"$1")
-                echo "$i"
-                return
-                ;;
+            "$1")     [ -z "${match_prio[1]}" ] && match_prio[1]="$i" ;;
+            "$1":*)   [ -z "${match_prio[2]}" ] && match_prio[2]="$i" ;;
+            */"$1")   [ -z "${match_prio[3]}" ] && match_prio[3]="$i" ;;
+            */"$1":*) [ -z "${match_prio[4]}" ] && match_prio[4]="$i" ;;
         esac
+    done
+
+    for i in "${match_prio[@]}"; do
+        [ -n "$i" ] && echo "$i" && return 0
     done
 }
 
