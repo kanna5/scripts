@@ -143,7 +143,7 @@ def interactive():
 
         conv.add_user(user_msg)
 
-        print(in_color(COLOR_PURPLE, "\nASSISTANT"))
+        print(in_color(COLOR_PURPLE, "\nASSISTANT:"))
         for content in client.complete(conv):
             print(content, end="")
             sys.stdout.flush()
