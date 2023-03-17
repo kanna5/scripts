@@ -15,9 +15,9 @@ findimg() {
     # Exact matches
     for i in "${imgs[@]}"; do
         case "$i" in
-            "$1")     [ -z "${match_prio[1]}" ] && match_prio[1]="$i" ;;
-            "$1":*)   [ -z "${match_prio[2]}" ] && match_prio[2]="$i" ;;
-            */"$1")   [ -z "${match_prio[3]}" ] && match_prio[3]="$i" ;;
+            "$1") [ -z "${match_prio[1]}" ] && match_prio[1]="$i" ;;
+            "$1":*) [ -z "${match_prio[2]}" ] && match_prio[2]="$i" ;;
+            */"$1") [ -z "${match_prio[3]}" ] && match_prio[3]="$i" ;;
             */"$1":*) [ -z "${match_prio[4]}" ] && match_prio[4]="$i" ;;
         esac
     done
@@ -39,10 +39,10 @@ shift || true
 
 CMD=("$@")
 if [ ${#CMD[@]} -le 0 ]; then
-    CMD=( /bin/bash )
+    CMD=(/bin/bash)
     case "$IMG" in
         *alpine*)
-            CMD=( /bin/sh )
+            CMD=(/bin/sh)
             ;;
     esac
 fi
