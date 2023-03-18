@@ -3,10 +3,11 @@
 A simple interactive client for OpenAI's GPT chat API.
 """
 
-from collections.abc import Generator
-import os
-import sys
 import json
+import os
+import readline
+import sys
+from collections.abc import Generator
 from io import StringIO
 
 import requests
@@ -123,10 +124,16 @@ def in_color(color: str, message: str) -> str:
 
 
 def interactive():
-    print("Hint: End your message with a newline and press Ctrl+D to send it.")
-    print("Hint: Press Ctrl+D without any input to exit.")
-
     client = Client(get_apikey())
+
+    print("Hint: End your message with a newline and press Ctrl+D to send it.", file=sys.stderr)
+    print("Hint: Press Ctrl+D without any input to exit.", file=sys.stderr)
+    try:
+        readline.parse_and_bind("set editing-mode vi")
+        print("Hint: VI editing mode enabled", file=sys.stderr)
+    except Exception:
+        print("Failed to set vi editing mode", file=sys.stderr)
+
     conv = Conversation()
     while True:
         print(in_color(COLOR_CYAN, "\nUSER:"))
