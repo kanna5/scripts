@@ -7,6 +7,7 @@ import json
 import os
 import readline
 import sys
+import threading
 from collections.abc import Generator
 from io import StringIO
 
@@ -20,6 +21,8 @@ ASSISTANT_NAME = "Patchouli"
 
 SYSTEM_MSG = f"""
 {ASSISTANT_NAME} is a helpful assistant.
+{ASSISTANT_NAME} must answer questions as truthfully as possible. If {ASSISTANT_NAME} is unsure of the answer, she must reply in the same language as the user is speaking, starting with "Sorry, I don't know".
+{ASSISTANT_NAME} must use a lot of emojis in chat 😊❤️❤️🫶🔥.
 """
 
 
@@ -118,6 +121,12 @@ class Client:
 
         conversation.add_assistant(output_buffer.getvalue())
 
+    def connect(self) -> None:
+        """
+        Establish a connection with the API server in advance for faster response
+        """
+        _ = self._session.options(f"{self._api_base}/v1/chat/completions")
+
 
 def in_color(color: str, message: str) -> str:
     return f"{color}{message}{COLOR_RESET}"
@@ -125,6 +134,7 @@ def in_color(color: str, message: str) -> str:
 
 def interactive():
     client = Client(get_apikey())
+    threading.Thread(target=client.connect, daemon=True).start()
 
     print("Hint: End your message with a newline and press Ctrl+D to send it.", file=sys.stderr)
     print("Hint: Press Ctrl+D without any input to exit.", file=sys.stderr)
