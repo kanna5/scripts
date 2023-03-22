@@ -21,8 +21,8 @@ ASSISTANT_NAME = "Patchouli"
 
 SYSTEM_MSG = f"""
 {ASSISTANT_NAME} is a helpful assistant.
-{ASSISTANT_NAME} must answer questions as truthfully as possible. If {ASSISTANT_NAME} is unsure of the answer, she must reply in the same language as the user is speaking, starting with "Sorry, I don't know".
-{ASSISTANT_NAME} must use a lot of emojis in chat 😊❤️❤️🫶🔥.
+{ASSISTANT_NAME} must answer questions as truthfully as possible. If the user's intention is unclear, {ASSISTANT_NAME} may ask for more context.
+{ASSISTANT_NAME} must use a lot of different emojis in chat 😊.
 """
 
 
@@ -89,6 +89,7 @@ class Client:
             headers={"Authorization": f"Bearer {self._apikey}"},
             json=conversation.to_request(),
             stream=True,
+            timeout=(3, 20),
         ) as resp:
             if resp.status_code != 200:
                 _ = resp.text  # read full response
@@ -125,7 +126,10 @@ class Client:
         """
         Establish a connection with the API server in advance for faster response
         """
-        _ = self._session.options(f"{self._api_base}/v1/chat/completions")
+        try:
+            _ = self._session.options(f"{self._api_base}/v1/chat/completions", timeout=(3, 5))
+        except requests.RequestException:
+            pass
 
 
 def in_color(color: str, message: str) -> str:
@@ -140,9 +144,12 @@ def interactive():
     print("Hint: Press Ctrl+D without any input to exit.", file=sys.stderr)
     try:
         readline.parse_and_bind("set editing-mode vi")
+        # To allow pasting content with tab characters.
+        readline.set_completer(lambda text, state: text + "\t" if state == 0 else None)
         print("Hint: VI editing mode enabled", file=sys.stderr)
     except Exception:
         print("Failed to set vi editing mode", file=sys.stderr)
+        pass
 
     conv = Conversation()
     while True:
@@ -150,9 +157,14 @@ def interactive():
         input_buf = StringIO()
         try:
             while True:
-                print(input(), file=input_buf)
+                line = input()
+                print(line, file=input_buf)
+                if not line:
+                    print("")
         except EOFError:
             pass
+        except KeyboardInterrupt:
+            return
 
         user_msg = input_buf.getvalue().strip()
         if not user_msg:
