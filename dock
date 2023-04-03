@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e -o pipefail
 
+ENV_PASSTHROUGH=(
+    TERM
+    COLORTERM
+    LANG
+)
+
 die() {
     [ "$#" -gt 0 ] && echo -e "\033[31m$*\033[0m" >&2
     exit 1
@@ -12,13 +18,12 @@ findimg() {
 
     declare -a match_prio
     local i
-    # Exact matches
     for i in "${imgs[@]}"; do
         case "$i" in
-            "$1") [ -z "${match_prio[1]}" ] && match_prio[1]="$i" ;;
-            "$1":*) [ -z "${match_prio[2]}" ] && match_prio[2]="$i" ;;
-            */"$1") [ -z "${match_prio[3]}" ] && match_prio[3]="$i" ;;
-            */"$1":*) [ -z "${match_prio[4]}" ] && match_prio[4]="$i" ;;
+            "$1") [ -z "${match_prio[1]}" ] && match_prio[1]="$i" ;;     # Exact match
+            "$1":*) [ -z "${match_prio[2]}" ] && match_prio[2]="$i" ;;   # Repo match
+            */"$1") [ -z "${match_prio[3]}" ] && match_prio[3]="$i" ;;   # Repo (last element) + Tag match
+            */"$1":*) [ -z "${match_prio[4]}" ] && match_prio[4]="$i" ;; # Repo (last element) match
         esac
     done
 
@@ -47,5 +52,16 @@ if [ ${#CMD[@]} -le 0 ]; then
     esac
 fi
 
+env_args=()
+for e in "${ENV_PASSTHROUGH[@]}"; do
+    [ -z "${!e}" ] || env_args+=(-e "$e=${!e}")
+done
+
+if [ -n "$TZ" ]; then
+    env_args+=(-e TZ="$TZ")
+elif tz=$(readlink -f /etc/localtime | sed '\|^.*zoneinfo/\([^/]\+/[^/]\+\)$|!d;s//\1/'); then
+    env_args+=(-e TZ="$tz")
+fi
+
 set -x
-exec sudo docker run -it --rm -e "TERM=$TERM" -v "$cwd:/cwd" --workdir /cwd "$IMG" "${CMD[@]}"
+exec sudo docker run -it --rm "${env_args[@]}" -v "$cwd:/cwd" --workdir /cwd "$IMG" "${CMD[@]}"
