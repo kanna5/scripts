@@ -12,9 +12,12 @@ die() {
     exit 1
 }
 
+docker_cmd=(docker)
+[ "$EUID" -eq 0 ] || docker_cmd=(sudo docker)
+
 findimg() {
     local -a imgs
-    readarray -t imgs < <(sudo docker images --format='{{ printf "%s:%s" .Repository .Tag }}')
+    readarray -t imgs < <("${docker_cmd[@]}" images --format='{{ printf "%s:%s" .Repository .Tag }}')
 
     declare -a match_prio
     local i
@@ -64,4 +67,4 @@ elif tz=$(readlink -f /etc/localtime | sed '\|^.*zoneinfo/\([^/]\+/[^/]\+\)$|!d;
 fi
 
 set -x
-exec sudo docker run -it --rm "${env_args[@]}" -v "$cwd:/cwd" --workdir /cwd "$IMG" "${CMD[@]}"
+exec "${docker_cmd[@]}" run -it --rm "${env_args[@]}" -v "$cwd:/cwd" --workdir /cwd "$IMG" "${CMD[@]}"
