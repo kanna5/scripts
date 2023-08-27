@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e -o pipefail
+
+script_name=$(basename "$0")
+
+usage() {
+    echo "Usage: $script_name <command> [args...]" >&2
+    echo "Run command on e-cores with lowest priority. Supports 12th gen Intel CPUs nd above." >&2
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+
+command -v "$1" &> /dev/null || {
+    echo "$script_name: Command not found: $1" >&2
+    usage
+}
+
+taskset_args=()
+cpurange=$(cat /sys/devices/cpu_atom/cpus || true)
+if [ -z "$cpurange" ]; then
+    echo "$script_name: WARN: unsupported platform." >&2
+else
+    taskset_args+=(taskset -c "$cpurange")
+fi
+
+exec "${taskset_args[@]}" nice -n 19 "$@"
