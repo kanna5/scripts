@@ -66,5 +66,16 @@ elif tz=$(readlink -f /etc/localtime | sed '\|^.*zoneinfo/\([^/]\+/[^/]\+\)$|!d;
     env_args+=(-e TZ="$tz")
 fi
 
+vol_args=(
+    -v "$cwd:/cwd"
+)
+case "$IMG" in
+    *archlinux*)
+        if [ -f "/etc/pacman.d/mirrorlist" ]; then
+            vol_args+=(-v /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro)
+        fi
+        ;;
+esac
+
 set -x
-exec "${docker_cmd[@]}" run -it --rm "${env_args[@]}" -v "$cwd:/cwd" --workdir /cwd "$IMG" "${CMD[@]}"
+exec "${docker_cmd[@]}" run -it --rm "${env_args[@]}" "${vol_args[@]}" --workdir /cwd --tmpfs /tmp:exec --cpu-shares 512 "$IMG" "${CMD[@]}"
