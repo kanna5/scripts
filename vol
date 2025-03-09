@@ -1,0 +1,108 @@
+#!/bin/bash
+# Control media volume from the command line.
+
+mute() {
+    pamixer --mute
+}
+
+unmute() {
+    pamixer --unmute
+}
+
+is_muted() {
+    pamixer --get-mute | grep -q true
+}
+
+get_default_sink() {
+    pamixer --get-default-sink | tail -n+2
+}
+
+get_volume() {
+    pamixer --get-volume
+}
+
+set_volume_safe() {
+    pamixer --set-volume "$1" --set-limit 30
+}
+
+set_volume() {
+    pamixer --set-volume "$1"
+}
+
+if ! command -v pamixer > /dev/null; then
+    echo '"pamixer" not installed' # https://github.com/cdemoulins/pamixer
+    exit 1
+fi
+
+RESET="\033[0m"
+BOLD="\033[1m"
+BLUE="\033[34m"
+RED="\033[31m"
+CYAN="\033[36m"
+
+show_default_sink() {
+    echo -e "${BOLD}Default sink: ${RESET}${BLUE}$(get_default_sink)${RESET}"
+}
+
+show_volume() {
+    echo -ne "${BOLD}Volume: ${RESET}${CYAN}$(get_volume)%${RESET}"
+    is_muted && echo -ne "${RED} (Muted)${RESET}"
+    echo
+}
+
+# WIP
+show_apps() {
+    if ! command -v pactl > /dev/null; then
+        echo 'Command "pactl" not found. You may need to install libpulse.'
+        exit 1
+    fi
+    # shellcheck disable=SC2016
+    awkprog='
+    match($0, /^Sink Input #([0-9]+)/, m) {
+        if (length(cur)) {
+            printf("%s: %s%s (%s) | %s\n", cur, muted, appname, procname, medianame);
+            cur = appname = procname = medianame = muted = "";
+        }
+        cur = m[1];
+    }
+    match($0, /^\s*application\.name = "(.*)"$/, m) { appname = m[1] }
+    match($0, /\s*application\.process\.binary = "(.*)/, m) {procname = m[1]}
+    match($0, /\s*media\.name = "(.*)"$/, m) {medianame = m[1]}
+    match($0, /^\s*Mute: yes$/) {muted = "[Muted] "} 
+    END {
+        if (length(cur)) {
+            printf("%s: %s%s (%s) | %s\n", cur, muted, appname, procname, medianame);
+        }
+    }'
+
+    pactl list sink-inputs | gawk "$awkprog"
+}
+
+case $1 in
+    m | mute)
+        mute
+        show_volume
+        ;;
+    u | um | unmute)
+        unmute
+        show_volume
+        ;;
+    [0-9] | [0-9][0-9] | 100)
+        set_volume_safe "$1"
+        show_volume
+        ;;
+    [0-9]! | [0-9][0-9]! | 100!)
+        set_volume "${1%!}"
+        show_volume
+        ;;
+    .)
+        show_default_sink
+        show_volume
+        ;;
+    a | app | apps)
+        show_apps
+        ;;
+    *)
+        echo "Usage: $0 <volume>[!]|m[ute]|u[nmute]|."
+        ;;
+esac
