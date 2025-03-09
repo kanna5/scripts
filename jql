@@ -1,0 +1,44 @@
+#!/bin/bash
+# A wrapper of the `jq` command that makes it easier to be used in a chain of
+# commands. You can put the filename arguments at the front, so it's easier to
+# edit the filter when you need to run the command again. When `jql` is the
+# last command in a chain (in which case the STDOUT is a TTY), a pager (less)
+# will be used
+
+opts=()
+filter=
+files=()
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -*) opts+=("$1") ;;
+        *)
+            if [ -f "$1" ]; then
+                files+=("$1")
+            else
+                if [ -z "$filter" ]; then
+                    filter="$1"
+                else
+                    echo "ERROR: Unrecognized argument: $1" >&2
+                    exit 1
+                fi
+            fi
+            ;;
+    esac
+    shift
+done
+
+[ -z "$filter" ] && filter=.
+
+jq_opts=(
+    "${opts[@]}"
+    "${filter}"
+    "${files[@]}"
+)
+
+if [ -t 1 ]; then
+    # STDOUT is a tty
+    jq -C "${jq_opts[@]}" | less -iRFX
+else
+    exec jq "${jq_opts[@]}"
+fi
