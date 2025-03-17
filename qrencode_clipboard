@@ -1,0 +1,28 @@
+#!/bin/bash
+# Use case: Assign a global hotkey to run this script.
+# TODO: wayland support
+
+die() {
+    echo "$*" >&2
+    [ -t 2 ] || notify-send "$(basename "$0")" "$1" --icon=dialog-error
+    exit 1
+}
+
+notify() {
+    local text
+    text=$(echo "$1" | head -c420 | head -n10 | iconv -f utf-8 -t utf-8 -c)
+    if [ "$(echo "$text" | wc -c)" -lt "$len" ]; then
+        text="${text} ..."
+    fi
+    notify-send -- "QR Code - Clipboard Content" "$text"
+}
+
+[ -n "$DISPLAY" ] || die "Cannot run without a display."
+
+content=$(xclip -selection clipboard -o) || die 'Failed to read clipboard'
+len=$(echo -n "$content" | wc -c)
+[ "$len" -le 0 ] && die 'Clipboard is empty'
+[ "$len" -gt 2951 ] && die 'Clipboard content is too long'
+
+notify "$content"
+echo -n "$content" | qrencode -l L -s 6 -t png -o - | feh - || die 'Failed to create QR Code'
