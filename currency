@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+"""
+Get real-time currency exchange rates from wise.com
+https://wise.com/us/currency-converter
+"""
+
+import os
+import re
+import sys
+from typing import Tuple
+
+import requests
+
+valid_currencies = set(
+    "aed,all,amd,ang,aoa,ars,aud,awg,azn,bam,bbd,bdt,bgn,bhd,bmd,bnd,bob,brl,bsd,btn,bwp,bzd,"
+    "cad,chf,clp,cny,cop,crc,cve,czk,djf,dkk,dop,dzd,egp,etb,eur,fjd,fkp,gbp,gel,ggp,ghs,gip,"
+    "gmd,gnf,gtq,gyd,hkd,hnl,hrk,htg,huf,idr,ils,imp,inr,isk,jep,jmd,jod,jpy,kes,kgs,khr,kmf,"
+    "krw,kwd,kyd,kzt,lak,lbp,lkr,lrd,lsl,mad,mdl,mga,mkd,mnt,mop,mru,mur,mvr,mwk,mxn,myr,mzn,"
+    "nad,ngn,nio,nok,npr,nzd,omr,pab,pen,pgk,php,pkr,pln,pyg,qar,ron,rsd,rwf,sar,sbd,scr,sek,"
+    "sgd,shp,sll,srd,svc,szl,thb,tjs,tmt,tnd,top,try,ttd,twd,tzs,uah,ugx,usd,uyu,uzs,vnd,vuv,"
+    "wst,xcd,xof,xpf,zar,zmw".split(",")
+)
+
+
+class NotFound(RuntimeError):
+    pass
+
+
+def parse_args(*args: str) -> Tuple[float, str, str]:
+    amount: float = 1
+    if len(args) == 2:
+        from_, to = args
+    elif len(args) == 3:
+        try:
+            amount = float(args[0])
+            assert amount > 0
+        except Exception as exc:
+            raise ValueError(f"invalid amount: {args[0]}") from exc
+
+        from_, to = args[1], args[2]
+    else:
+        raise ValueError("invalid amount of args")
+
+    from_ = from_.strip().lower()
+    to = to.strip().lower()
+    if from_ not in valid_currencies:
+        raise ValueError(f"invalid currency: {from_}")
+    if to not in valid_currencies:
+        raise ValueError(f"invalid currency: {to}")
+
+    return amount, from_, to
+
+
+def get_rate(from_: str, to: str) -> float:
+    url = f"https://wise.com/us/currency-converter/{from_}-to-{to}-rate"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    pattern = re.compile(r"text-success[^0-9.<]+([0-9.]+)")
+    matches = pattern.findall(resp.text)
+    if not matches:
+        raise NotFound(f"No rate found for {from_} to {to}")
+
+    return float(matches[-1])
+
+
+def usage():
+    name = os.path.basename(__file__)
+    print(f"Usage: {name} [amount] <from> <to>\nExample: {name} 4.2 usd jpy\n", file=sys.stderr)
+
+
+def main():
+    try:
+        (amount, from_, to) = parse_args(*sys.argv[1:])
+    except ValueError as exc:
+        print(f"Invalid usage: {exc}", file=sys.stderr)
+        usage()
+        return 1
+
+    rate = get_rate(from_, to)
+    print(f"{amount:,g} {from_.upper()} = {amount * rate:,g} {to.upper()}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
