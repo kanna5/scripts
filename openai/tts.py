@@ -62,7 +62,7 @@ class PlayerOutputHandler(OutputHandler):
     def __init__(self):
         player_path = shutil.which("mpv")
         if player_path is None:
-            raise RuntimeError("Could not find `play` from the sox package")
+            raise RuntimeError("Could not find the `mpv` command")
         self._player_path = player_path
         self._proc = None
 
