@@ -27,25 +27,40 @@ class NotFound(RuntimeError):
 
 
 def parse_args(*args: str) -> Tuple[float, str, str]:
-    amount: float = 1
-    if len(args) == 2:
-        from_, to = args
-    elif len(args) == 3:
-        try:
-            amount = float(args[0])
-            assert amount > 0
-        except Exception as exc:
-            raise ValueError(f"invalid amount: {args[0]}") from exc
+    amount: float | None = None
+    from_: str | None = None
+    to: str | None = None
 
-        from_, to = args[1], args[2]
-    else:
-        raise ValueError("invalid amount of args")
+    while len(args):
+        if from_ is None:
+            if amount is None:
+                try:
+                    amount = float(args[0])
+                    args = args[1:]
+                    continue
+                except ValueError:
+                    pass
+            from_ = args[0]
+            args = args[1:]
+            continue
 
-    from_ = from_.strip().lower()
-    to = to.strip().lower()
-    if from_ not in valid_currencies:
+        # Allow an optional "to" between the currencies
+        if args[0].lower() == "to":
+            args = args[1:]
+            continue
+
+        if to is None:
+            to = args[0]
+            args = args[1:]
+        else:
+            raise ValueError(f"Unknown argument {args[0]}")
+
+    amount = 1.0 if amount is None else amount
+    if amount <= 0:
+        raise ValueError(f"invalid amount: {amount}, must be greater than 0.")
+    if from_ is None or from_ not in valid_currencies:
         raise ValueError(f"invalid currency: {from_}")
-    if to not in valid_currencies:
+    if to is None or to not in valid_currencies:
         raise ValueError(f"invalid currency: {to}")
 
     return amount, from_, to
