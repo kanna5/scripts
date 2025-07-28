@@ -5,7 +5,6 @@ https://wise.com/us/currency-converter
 """
 
 import os
-import re
 import sys
 from typing import Tuple
 
@@ -67,20 +66,21 @@ def parse_args(*args: str) -> Tuple[float, str, str]:
 
 
 def get_rate(from_: str, to: str) -> float:
-    url = f"https://wise.com/us/currency-converter/{from_}-to-{to}-rate"
+    url = f"https://wise.com/rates/history+live?source={from_}&target={to}&length=1&resolution=hourly&unit=hour"
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
-    pattern = re.compile(r"text-success[^0-9.<]+([0-9.]+)")
-    matches = pattern.findall(resp.text)
-    if not matches:
-        raise NotFound(f"No rate found for {from_} to {to}")
-
-    return float(matches[-1])
+    try:
+        return resp.json()[0]["value"]
+    except (KeyError, IndexError) as e:
+        raise NotFound(f"No rate found for {from_} to {to}") from e
 
 
 def usage():
     name = os.path.basename(__file__)
-    print(f"Usage: {name} [amount] <from> <to>\nExample: {name} 4.2 usd jpy\n", file=sys.stderr)
+    print(
+        f"Usage: {name} [amount] <from> <to>\nExample: {name} 4.2 usd jpy\n",
+        file=sys.stderr,
+    )
 
 
 def fmt_number(num) -> str:
@@ -97,7 +97,9 @@ def main():
         return 1
 
     rate = get_rate(from_, to)
-    print(f"{fmt_number(amount)} {from_.upper()} = {fmt_number(amount * rate)} {to.upper()}")
+    print(
+        f"{fmt_number(amount)} {from_.upper()} = {fmt_number(amount * rate)} {to.upper()}"
+    )
     return 0
 
 
