@@ -1,0 +1,54 @@
+#!/bin/bash
+set -e -o pipefail
+
+# Bare-minimum script for searching and cloning AUR packages from the mirror
+# Use when AUR is down (e.g., under a DDoS attack) :(
+#
+# Install a fuzzy finder like fzf or fzy for better search experience
+#
+# Usage:
+#   aur-mirror search
+#     Search for a package from AUR (interactive)
+#   aur-mirror clone <package_name>
+#     Clone the package into <package_name> directory.
+#     You can then `cd <package_name>` and run `makepkg`
+
+AUR_MIRROR_URL=${AUR_MIRROR_URL:-https://github.com/archlinux/aur.git}
+
+find_alternatives() {
+    for i in "$@"; do
+        if command -v "$i" > /dev/null; then
+            echo "$i"
+            return 0
+        fi
+    done
+    return 1
+}
+
+get_branches() {
+    git ls-remote "${AUR_MIRROR_URL}" | grep '\srefs/heads/' | sed 's/^.*\srefs\/heads\///'
+}
+
+case "$1" in
+    search)
+        finder=$(find_alternatives fzf fzy less) || {
+            echo "Please install a fuzzy finder like fzf or fzy" >&2
+            exit 1
+        }
+        get_branches | "$finder"
+        ;;
+
+    clone)
+        pkg="$2"
+        [ -n "$pkg" ] || {
+            echo "Please specify a package name"
+            exit 1
+        }
+        git clone "${AUR_MIRROR_URL}" --branch "$pkg" --single-branch "$pkg"
+        ;;
+
+    *)
+        echo "Usage: $0 {search|clone <package_name>}" >&2
+        exit 1
+        ;;
+esac
