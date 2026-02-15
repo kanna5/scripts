@@ -1,6 +1,5 @@
 #!/bin/bash
-# Use case: Assign a global hotkey to run this script.
-# TODO: wayland support
+# Assign a global hotkey to run this script.
 
 die() {
     echo "$*" >&2
@@ -10,17 +9,30 @@ die() {
 
 notify() {
     local text
-    text=$(echo "$1" | head -c420 | head -n10 | iconv -f utf-8 -t utf-8 -c)
-    if [ "$(echo "$text" | wc -c)" -lt "$len" ]; then
+    text=$(echo "$1" | head -c420 | head -n10 | iconv -f utf-8 -t utf-8 -c) # truncate text for notification
+    if [ "${#text}" -lt "$len" ]; then
         text="${text} ..."
     fi
     notify-send -- "QR Code - Clipboard Content" "$text"
 }
 
-[ -n "$DISPLAY" ] || die "Cannot run without a display."
+read_wayland() {
+    wl-paste -n
+}
 
-content=$(xclip -selection clipboard -o) || die 'Failed to read clipboard'
-len=$(echo -n "$content" | wc -c)
+read_xorg() {
+    xclip -selection clipboard -o
+}
+
+if [ -n "$WAYLAND_DISPLAY" ]; then
+    content=$(read_wayland) || die 'Failed to read Wayland clipboard'
+elif [ -n "$DISPLAY" ]; then
+    content=$(read_xorg) || die 'Failed to read Xorg clipboard'
+else
+    die "Neither $$DISPLAY nor $$WAYLAND_DISPLAY is set"
+fi
+
+len=${#content}
 [ "$len" -le 0 ] && die 'Clipboard is empty'
 [ "$len" -gt 2951 ] && die 'Clipboard content is too long'
 

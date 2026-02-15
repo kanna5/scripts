@@ -13,7 +13,7 @@ die() {
 }
 
 docker_cmd=(docker)
-[ "$EUID" -eq 0 ] || docker_cmd=(sudo docker)
+[ "$EUID" -eq 0 ] || echo " $(groups) " | grep -qF ' docker ' || docker_cmd=(sudo docker)
 
 findimg() {
     local -a imgs
@@ -40,6 +40,22 @@ BLACKLIST_DIRS=":/:/boot:/proc:/root:/run:/etc:/usr:/dev:/var:/home:/opt:/srv:/t
 
 cwd="$(realpath .)"
 echo ":$BLACKLIST_DIRS:" | grep -q "$cwd" && die "Refuse to run under protected directory: $cwd"
+
+# Parse and generate additional docker arguments
+docker_args=()
+use_host_network=
+use_gpu=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --host) use_host_network=1 ;;
+        --gpu) use_gpu=1 ;;
+        *) break ;;
+    esac
+    shift
+done
+[ -n "$use_host_network" ] && docker_args+=(--network host)
+[ -n "$use_gpu" ] && docker_args+=(--gpus all)
 
 [ -n "$1" ] && IMG=$(findimg "$1")
 [ -z "$IMG" ] && die "image not found: $1"
@@ -71,11 +87,12 @@ vol_args=(
 )
 case "$IMG" in
     *archlinux*)
-        if [ -f "/etc/pacman.d/mirrorlist" ]; then
+        if [ -f "/etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist" ]; then
             vol_args+=(-v /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro)
         fi
         ;;
 esac
 
 set -x
-exec "${docker_cmd[@]}" run -it --rm "${env_args[@]}" "${vol_args[@]}" --workdir /cwd --tmpfs /tmp:exec --cpu-shares 512 "$IMG" "${CMD[@]}"
+exec "${docker_cmd[@]}" run -it --rm "${env_args[@]}" "${vol_args[@]}" --workdir /cwd --tmpfs /tmp:exec --cpu-shares 512 \
+    "${docker_args[@]}" "$IMG" "${CMD[@]}"

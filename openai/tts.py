@@ -1,20 +1,20 @@
 #!/usr/bin/python3
 
-from abc import ABC, abstractmethod
 import base64
-from functools import cache
 import logging
 import os
 import shutil
 import subprocess
 import sys
+from abc import ABC, abstractmethod
+from functools import cache
 
 import openai
 
 
 @cache
 def find_api_key() -> str:
-    env_key = "OPENAI_APIKEY"
+    env_key = "OPENAI_API_KEY"
     if env_key in os.environ:
         return os.environ[env_key]
 

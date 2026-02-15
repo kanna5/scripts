@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import argparse
-import json
 import logging
 import os
 import sys
@@ -9,6 +8,8 @@ import typing
 from typing import Optional
 
 import openai
+from openai.types.audio.transcription import Transcription
+from openai.types.audio.transcription_verbose import TranscriptionVerbose
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +24,15 @@ VALID_LANGUAGES = set(
 
 VALID_RESPONSE_FORMATS = set(["json", "text", "srt", "verbose_json", "vtt"])
 
+TranscriptionResultType = Transcription | TranscriptionVerbose | str
+
 
 class AuthError(RuntimeError):
     pass
 
 
 def get_auth_info() -> str:
-    envkey = "OPENAI_APIKEY"
+    envkey = "OPENAI_API_KEY"
     if envkey in os.environ and os.environ[envkey]:
         return os.environ[envkey]
 
@@ -43,7 +46,9 @@ def get_auth_info() -> str:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Transcribe audio with OpenAI's Whisper API")
+    parser = argparse.ArgumentParser(
+        description="Transcribe audio with OpenAI's Whisper API"
+    )
     parser.add_argument(
         "-l",
         "--language",
@@ -87,7 +92,7 @@ def transcribe(
     temperature: Optional[float] = None,
     prompt: Optional[str] = None,
     response_format: Optional[str] = None,
-):
+) -> TranscriptionResultType:
     api_args = {}
 
     if language is not None:
@@ -102,7 +107,9 @@ def transcribe(
     if prompt is not None:
         api_args["prompt"] = prompt
 
-    return client.audio.transcriptions.create(model="whisper-1", file=audio_file, **api_args)
+    return client.audio.transcriptions.create(
+        model="whisper-1", file=audio_file, **api_args
+    )
 
 
 def get_output_filename(input_filename: str, format: str):
@@ -119,13 +126,11 @@ def get_output_filename(input_filename: str, format: str):
     raise KeyError(f"invalid format: {format}")
 
 
-def write_result(output_file: typing.IO, format: str, result):
-    if format in ["json", "verbose_json"]:
-        output_file.write(json.dumps(result))
-    elif format == "text":
-        output_file.write(result.text)
-    elif format in ["srt", "vtt"]:
-        output_file.write(f"{result.strip()}\n")
+def write_result(output_file: typing.IO, format: str, result: TranscriptionResultType):
+    if type(result) is Transcription or type(result) is TranscriptionVerbose:
+        output_file.write(result.to_json())
+    elif type(result) is str:
+        output_file.write(result)
 
     output_file.flush()
 
