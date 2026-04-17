@@ -13,7 +13,7 @@ die() {
 }
 
 docker_cmd=(docker)
-[ "$EUID" -eq 0 ] || echo " $(groups) " | grep -qF ' docker ' || docker_cmd=(sudo docker)
+[ -w /var/run/docker.sock ] || docker_cmd=(sudo docker)
 
 findimg() {
     local -a imgs
@@ -39,60 +39,47 @@ IMG=archlinux:base-devel
 BLACKLIST_DIRS=":/:/boot:/proc:/root:/run:/etc:/usr:/dev:/var:/home:/opt:/srv:/tmp:/mnt:/sys:$(realpath "$HOME"):"
 
 cwd="$(realpath .)"
-echo ":$BLACKLIST_DIRS:" | grep -q "$cwd" && die "Refuse to run under protected directory: $cwd"
+echo ":$BLACKLIST_DIRS:" | grep -qF ":$cwd:" && die "Refuse to run under protected directory: $cwd"
 
 # Parse and generate additional docker arguments
 docker_args=()
-use_host_network=
-use_gpu=
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --host) use_host_network=1 ;;
-        --gpu) use_gpu=1 ;;
+        --host) docker_args+=(--network host) ;;
+        --gpu) docker_args+=(--gpus all) ;;
+        --root) docker_args+=(--user root) ;;
         *) break ;;
     esac
     shift
 done
-[ -n "$use_host_network" ] && docker_args+=(--network host)
-[ -n "$use_gpu" ] && docker_args+=(--gpus all)
 
 [ -n "$1" ] && IMG=$(findimg "$1")
 [ -z "$IMG" ] && die "image not found: $1"
 shift || true
 
-CMD=("$@")
-if [ ${#CMD[@]} -le 0 ]; then
-    CMD=(/bin/bash)
-    case "$IMG" in
-        *alpine*)
-            CMD=(/bin/sh)
-            ;;
-    esac
-fi
-
-env_args=()
+# Environment variables
 for e in "${ENV_PASSTHROUGH[@]}"; do
-    [ -z "${!e}" ] || env_args+=(-e "$e=${!e}")
+    [ -z "${!e}" ] || docker_args+=(-e "$e=${!e}")
 done
 
 if [ -n "$TZ" ]; then
-    env_args+=(-e TZ="$TZ")
-elif tz=$(readlink -f /etc/localtime | sed '\|^.*zoneinfo/\([^/]\+/[^/]\+\)$|!d;s//\1/'); then
-    env_args+=(-e TZ="$tz")
+    docker_args+=(-e TZ="$TZ")
+else
+    tz=$(readlink -f /etc/localtime | sed -E 's|.*/zoneinfo/(posix/\|right/)?||')
+    docker_args+=(-e TZ="${tz:-UTC}")
 fi
 
-vol_args=(
-    -v "$cwd:/cwd"
-)
+# Mounts
+docker_args+=(-v "$cwd:/cwd")
 case "$IMG" in
     *archlinux*)
-        if [ -f "/etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist" ]; then
-            vol_args+=(-v /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro)
-        fi
+        [ -f "/etc/pacman.d/mirrorlist" ] && docker_args+=(-v /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro)
         ;;
 esac
 
 set -x
-exec "${docker_cmd[@]}" run -it --rm "${env_args[@]}" "${vol_args[@]}" --workdir /cwd --tmpfs /tmp:exec --cpu-shares 512 \
-    "${docker_args[@]}" "$IMG" "${CMD[@]}"
+exec "${docker_cmd[@]}" run -it --rm --workdir /cwd --tmpfs /tmp:exec --cpu-shares 512 \
+    "${docker_args[@]}" \
+    --entrypoint /bin/sh "$IMG" \
+    -c "[ -x /bin/bash ] && exec /bin/bash || exec /bin/sh"
