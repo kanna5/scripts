@@ -1,0 +1,15 @@
+#!/bin/bash
+# nnn wrapper https://github.com/jarun/nnn
+
+set -e
+
+command -v nnn &> /dev/null || {
+    echo "nnn executable not found" >&2
+    exit 1
+}
+
+export NNN_OPTS=${NNN_OPTS:-HARdU}
+export NNN_FCOLORS=${NNN_FCOLORS:-060e04090f07050801030b08}
+export LC_COLLATE=C.UTF-8
+
+exec nnn "$@"
