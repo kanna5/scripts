@@ -1,0 +1,300 @@
+#!/bin/bash
+set -euo pipefail
+
+script_name=${0##*/}
+
+usage() {
+    cat << EOF
+Usage: $script_name [OPTIONS] URL
+       $script_name [OPTIONS] --file FILE
+
+A simple CLI wrapper for r.jina.ai. Converts a web page or document to Markdown
+or screenshot. Requires curl, jq, and base64 (for file uploads).
+
+  -q, --quality VALUE       best (default) or fast
+  -f, --format VALUE        default, markdown, html, text, screenshot, pageshot
+  -W, --width PIXELS        Browser viewport width (pixels. default: 1280)
+  -H, --height PIXELS       Browser viewport height (pixels. default: 1280)
+      --json                Return Jina's JSON response unchanged
+  -s, --selector CSS        Extract matching elements (also waits for them)
+      --wait-for-selector   CSS
+      --remove-selector     CSS
+      --remove-images
+      --with-links-summary
+      --with-images-summary
+      --cookies COOKIE      Set-Cookie syntax; repeat for multiple cookies
+      --with-generated-alt
+      --proxy COUNTRY       Country code, auto, or none
+      --no-cache
+      --cache-tolerance SECONDS
+      --user-agent STRING
+      --referer URL
+      --keep-img-data-url
+      --locale LOCALE
+      --with-iframe
+      --with-shadow-dom
+      --file FILE           Upload a local document. "-" for stdin
+      --js SCRIPT           Inline JavaScript or a script URL
+      --link-style VALUE    inline, reference, or plain (link text only)
+      --timeout SECONDS     Jina page-loading timeout (default: 20)
+      --api-key KEY         Override JINA_API_KEY and llm's stored jina key
+      --no-api-key          Disable all API key sources and the missing-key warning
+  -o, --output FILE         Output file. "-" for stdout
+  -h, --help                Show this help
+
+Docs:
+  https://jina.ai/reader/
+  https://docs.jina.ai/#tag/reader/POST/
+EOF
+}
+
+die() {
+    printf '%s: %s\n' "$script_name" "$*" >&2
+    exit 1
+}
+
+engine=browser
+format=default
+timeout=20
+width=
+height=
+output=-
+url=
+input_file=
+script=
+json=false
+no_api_key=false
+cli_api_key=false
+api_key=${JINA_API_KEY:-}
+headers=()
+
+header() {
+    headers+=(--header "$1: $2")
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -q | --quality | -f | --format | -W | --width | -H | --height | \
+            -s | --selector | --wait-for-selector | --remove-selector | \
+            --cookies | --proxy | --cache-tolerance | --user-agent | \
+            --referer | --locale | --file | --js | --link-style | --timeout | \
+            --api-key | -o | --output)
+            [ "$#" -ge 2 ] || die "$1 requires a value"
+            ;;
+    esac
+    case "$1" in
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -q | --quality)
+            case "$2" in
+                best) engine=browser ;;
+                fast) engine=direct ;;
+                *) die '--quality must be best or fast' ;;
+            esac
+            shift
+            ;;
+        -f | --format)
+            case "$2" in
+                default | markdown | html | text | screenshot | pageshot) format=$2 ;;
+                *) die '--format must be default, markdown, html, text, screenshot, or pageshot' ;;
+            esac
+            shift
+            ;;
+        -W | --width)
+            width=$2
+            shift
+            ;;
+        -H | --height)
+            height=$2
+            shift
+            ;;
+        --json) json=true ;;
+        -s | --selector)
+            header X-Target-Selector "$2"
+            shift
+            ;;
+        --wait-for-selector)
+            header X-Wait-For-Selector "$2"
+            shift
+            ;;
+        --remove-selector)
+            header X-Remove-Selector "$2"
+            shift
+            ;;
+        --remove-images) header X-Retain-Images none ;;
+        --with-links-summary) header X-With-Links-Summary true ;;
+        --with-images-summary) header X-With-Images-Summary true ;;
+        --cookies)
+            header X-Set-Cookie "$2"
+            shift
+            ;;
+        --with-generated-alt) header X-With-Generated-Alt true ;;
+        --proxy)
+            header X-Proxy "$2"
+            shift
+            ;;
+        --no-cache) header X-No-Cache true ;;
+        --cache-tolerance)
+            header X-Cache-Tolerance "$2"
+            shift
+            ;;
+        --user-agent)
+            header X-User-Agent "$2"
+            shift
+            ;;
+        --referer)
+            header X-Referer "$2"
+            shift
+            ;;
+        --keep-img-data-url) header X-Keep-Img-Data-Url true ;;
+        --locale)
+            header X-Locale "$2"
+            shift
+            ;;
+        --with-iframe) header X-With-Iframe true ;;
+        --with-shadow-dom) header X-With-Shadow-Dom true ;;
+        --file)
+            input_file=$2
+            shift
+            ;;
+        --js)
+            script=$2
+            shift
+            ;;
+        --link-style)
+            case "$2" in
+                inline) header X-Md-Link-Style inlined ;;
+                reference) header X-Md-Link-Style referenced ;;
+                plain) header X-Md-Link-Style discarded ;;
+                *) die '--link-style must be inline, reference, or plain' ;;
+            esac
+            shift
+            ;;
+        --timeout)
+            timeout=$2
+            shift
+            ;;
+        --api-key)
+            api_key=$2
+            cli_api_key=true
+            shift
+            ;;
+        --no-api-key) no_api_key=true ;;
+        -o | --output)
+            output=$2
+            shift
+            ;;
+        --)
+            shift
+            [ "$#" -le 1 ] || die 'expected one URL'
+            if [ "$#" -eq 1 ]; then
+                [ -z "$url" ] || die 'expected one URL'
+                url=$1
+            fi
+            break
+            ;;
+        -*) die "unknown option: $1" ;;
+        *)
+            [ -z "$url" ] || die 'expected one URL'
+            url=$1
+            ;;
+    esac
+    shift
+done
+
+[ -n "$url" ] || [ -n "$input_file" ] || die 'provide a URL or --file FILE (see --help)'
+for dependency in curl jq; do
+    command -v "$dependency" > /dev/null 2>&1 || die "$dependency is required"
+done
+
+if [ "$no_api_key" = false ]; then
+    if [ "$cli_api_key" = false ] && [ -z "$api_key" ]; then
+        # Match llm's configurable directory and platform defaults without needing llm.
+        if [ -n "${LLM_USER_PATH:-}" ]; then
+            keys_dir=$LLM_USER_PATH
+        elif [ "$(uname -s)" = Darwin ]; then
+            keys_dir=${HOME:-}/Library/Application\ Support/io.datasette.llm
+        else
+            keys_dir=${XDG_CONFIG_HOME:-${HOME:-}/.config}/io.datasette.llm
+        fi
+        api_key=$(jq -er '.jina | strings | select(startswith("jina"))' \
+            "$keys_dir/keys.json" 2> /dev/null) || api_key=
+    fi
+    if [ -n "$api_key" ]; then
+        header Authorization "Bearer $api_key"
+    else
+        printf '%s: warning: no API key found. Request may fail.\n' "$script_name" >&2
+    fi
+fi
+
+header Content-Type application/json
+header X-Base final
+header X-Engine "$engine"
+header X-Timeout "$timeout"
+[ "$format" = default ] || header X-Respond-With "$format"
+
+download_image=false
+case "$format" in
+    screenshot | pageshot)
+        if [ "$json" = false ]; then
+            download_image=true
+            if [ "$output" = - ] && [ -t 1 ]; then
+                die 'Not writing binary data to terminal. Use -o FILE or redirect stdout'
+            fi
+        fi
+        ;;
+esac
+# JSON gives us the image URL without forwarding request headers to its host.
+if [ "$json" = true ] || [ "$download_image" = true ]; then
+    header Accept application/json
+fi
+
+request_body() {
+    if [ -n "$input_file" ]; then
+        command -v base64 > /dev/null 2>&1 || die 'base64 is required for --file'
+        if [ "$input_file" = - ]; then
+            base64
+        else
+            base64 < "$input_file"
+        fi | tr -d '\r\n' | jq -Rs '{file: .}'
+    else
+        printf '{}\n'
+    fi | jq -c --arg url "$url" --arg script "$script" \
+        --arg width "$width" --arg height "$height" '
+        . + (if $url == "" then {} else {url: $url} end)
+          + (if $script == "" then {} else {injectPageScript: $script} end)
+        | if $width == "" then . else .viewport.width = ($width | tonumber) end
+        | if $height == "" then . else .viewport.height = ($height | tonumber) end
+    '
+}
+
+# Read uploads before opening the output, including when both paths are the same.
+body=$(request_body)
+if [ "$output" != - ]; then
+    exec > "$output"
+fi
+if [ "$download_image" = true ] && [ -t 1 ]; then
+    die 'image output is a terminal; use -o FILE or redirect stdout'
+fi
+
+request() {
+    printf '%s\n' "$body" | curl --silent --show-error --fail-with-body \
+        --tlsv1.3 --compressed "${headers[@]}" --data-binary @- https://r.jina.ai/
+}
+
+if [ "$download_image" = true ]; then
+    response=$(request) || {
+        status=$?
+        printf '%s\n' "$response" >&2
+        exit "$status"
+    }
+    image_url=$(printf '%s\n' "$response" | jq -er --arg format "$format" \
+        '.data[$format + "Url"] | strings | select(length > 0)') \
+        || die 'Jina returned no image URL'
+    curl --silent --show-error --fail-with-body --tlsv1.3 --compressed --location \
+        --proto '=https' --proto-redir '=https' --url "$image_url"
+else
+    request
+fi
